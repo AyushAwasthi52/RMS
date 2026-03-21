@@ -3,8 +3,11 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { AuthProvider } from "@/context/AuthContext";
 import { RestaurantProvider } from "@/context/RestaurantContext";
 import Index from "./pages/Index.tsx";
+import AuthPage from "./pages/AuthPage.tsx";
 import CustomerDashboard from "./pages/CustomerDashboard.tsx";
 import WaiterDashboard from "./pages/WaiterDashboard.tsx";
 import ChefDashboard from "./pages/ChefDashboard.tsx";
@@ -18,18 +21,21 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <RestaurantProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/customer" element={<CustomerDashboard />} />
-            <Route path="/waiter" element={<WaiterDashboard />} />
-            <Route path="/chef" element={<ChefDashboard />} />
-            <Route path="/manager" element={<ManagerDashboard />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </RestaurantProvider>
+      <AuthProvider>
+        <RestaurantProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/auth" element={<AuthPage />} />
+              <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+              <Route path="/customer" element={<ProtectedRoute role="customer"><CustomerDashboard /></ProtectedRoute>} />
+              <Route path="/waiter" element={<ProtectedRoute role="waiter"><WaiterDashboard /></ProtectedRoute>} />
+              <Route path="/chef" element={<ProtectedRoute role="chef"><ChefDashboard /></ProtectedRoute>} />
+              <Route path="/manager" element={<ProtectedRoute role="manager"><ManagerDashboard /></ProtectedRoute>} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </RestaurantProvider>
+      </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

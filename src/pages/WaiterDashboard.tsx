@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Users, CheckCircle, CreditCard, Send } from 'lucide-react';
 
 export default function WaiterDashboard() {
-  const { orders, tables, getOrderForTable, updateOrderStatus } = useRestaurant();
+  const { orders, tables, getOrderForTable, updateOrderStatus, loading, error } = useRestaurant();
   const [selectedTable, setSelectedTable] = useState<number | null>(null);
 
   const selectedOrder = selectedTable ? getOrderForTable(selectedTable) : undefined;
@@ -49,6 +49,8 @@ export default function WaiterDashboard() {
 
         {/* Right: Order Panel */}
         <div className="w-1/2 p-6 overflow-auto">
+          {loading && <p className="text-sm text-muted-foreground mb-4">Loading data...</p>}
+          {error && <p className="text-sm text-destructive mb-4">{error}</p>}
           {selectedTable && selectedOrder ? (
             <div>
               <h2 className="font-display text-lg font-semibold mb-4">Table {selectedTable} — Order</h2>

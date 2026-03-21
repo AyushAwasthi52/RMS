@@ -12,7 +12,7 @@ const lanes: { status: OrderStatus; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function ChefDashboard() {
-  const { orders, updateOrderStatus } = useRestaurant();
+  const { orders, menuItems, updateOrderStatus, updateMenuAvailability, loading, error } = useRestaurant();
 
   const nextStatus: Record<string, OrderStatus> = {
     pending: 'cooking',
@@ -29,6 +29,30 @@ export default function ChefDashboard() {
       <AppNav role="chef" />
       <div className="p-6">
         <h1 className="font-display text-2xl font-bold mb-6">Kitchen Dashboard</h1>
+        {loading && <p className="text-sm text-muted-foreground mb-4">Loading data...</p>}
+        {error && <p className="text-sm text-destructive mb-4">{error}</p>}
+        <div className="rounded-md border border-border bg-card p-4 mb-6">
+          <h2 className="font-display text-base font-semibold mb-3">Menu Availability</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {menuItems.map((item) => (
+              <div key={item.id} className="rounded-md border border-border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">{item.category}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={item.available ? 'outline' : 'default'}
+                    onClick={() => updateMenuAvailability(item.id, !item.available)}
+                  >
+                    {item.available ? 'Exclude' : 'Include'}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {lanes.map(lane => {
             const laneOrders = orders.filter(o => o.status === lane.status);

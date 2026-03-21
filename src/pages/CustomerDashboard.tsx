@@ -7,7 +7,7 @@ import type { MenuItem, OrderItem } from '@/types/restaurant';
 import { Plus, Minus, ShoppingCart, Send } from 'lucide-react';
 
 export default function CustomerDashboard() {
-  const { menuItems, addOrder } = useRestaurant();
+  const { menuItems, addOrder, loading, error } = useRestaurant();
   const [cart, setCart] = useState<Map<string, { item: MenuItem; qty: number }>>(new Map());
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [orderPlaced, setOrderPlaced] = useState(false);
@@ -57,6 +57,8 @@ export default function CustomerDashboard() {
       <AppNav role="customer" />
       <div className="max-w-6xl mx-auto p-6">
         <h1 className="font-display text-2xl font-bold mb-6">Menu</h1>
+        {loading && <p className="text-sm text-muted-foreground mb-4">Loading menu...</p>}
+        {error && <p className="text-sm text-destructive mb-4">{error}</p>}
 
         {orderPlaced && (
           <div className="mb-4 rounded-md border border-success bg-success/10 p-3 text-sm font-medium text-success flex items-center gap-2">

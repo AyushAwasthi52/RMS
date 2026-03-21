@@ -1,15 +1,28 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRestaurant } from '@/context/RestaurantContext';
 import { AppNav } from '@/components/AppNav';
 import { LowStockBadge } from '@/components/StatusBadge';
-import { STAFF } from '@/data/mockData';
 import { BarChart3, Package, Users, UtensilsCrossed, TrendingUp, AlertTriangle, CreditCard, Plus } from 'lucide-react';
+import type { StaffMember } from '@/types/restaurant';
+import { fetchStaffMembers } from '@/lib/restaurantApi';
+import { Button } from '@/components/ui/button';
 
 type ManagerTab = 'overview' | 'menu' | 'inventory' | 'staff';
 
 export default function ManagerDashboard() {
-  const { orders, menuItems, inventory, updateInventory } = useRestaurant();
+  const { orders, menuItems, inventory, updateInventory, updateMenuAvailability, addMenuItem, loading, error } = useRestaurant();
   const [tab, setTab] = useState<ManagerTab>('overview');
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [newItem, setNewItem] = useState({
+    name: '',
+    description: '',
+    category: '',
+    price: '',
+  });
+
+  useEffect(() => {
+    fetchStaffMembers().then(setStaff).catch(() => setStaff([]));
+  }, []);
 
   const paidOrders = orders.filter(o => o.status === 'paid');
   const totalRevenue = paidOrders.reduce((s, o) => s + Math.round(o.total * 1.05), 0);
@@ -26,10 +39,7 @@ export default function ManagerDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <AppNav
-        role="manager"
-        navItems={tabs.map(t => ({ label: t.label, path: '#', icon: t.icon }))}
-      />
+      <AppNav role="manager" />
       {/* Custom tab nav since we're using local state */}
       <div className="border-b border-border bg-card px-6">
         <div className="flex gap-1">
@@ -50,6 +60,8 @@ export default function ManagerDashboard() {
       </div>
 
       <div className="max-w-6xl mx-auto p-6">
+        {loading && <p className="text-sm text-muted-foreground mb-4">Loading data...</p>}
+        {error && <p className="text-sm text-destructive mb-4">{error}</p>}
         {tab === 'overview' && (
           <div className="space-y-6">
             <h1 className="font-display text-2xl font-bold">Dashboard Overview</h1>
@@ -119,6 +131,54 @@ export default function ManagerDashboard() {
             <div className="flex items-center justify-between">
               <h1 className="font-display text-2xl font-bold">Menu Management</h1>
             </div>
+            <div className="rounded-md border border-border bg-card p-4">
+              <h2 className="font-medium text-sm mb-3">Add Menu Item</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input
+                  value={newItem.name}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="Item name"
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+                <input
+                  value={newItem.category}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, category: e.target.value }))}
+                  placeholder="Category"
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+                <input
+                  value={newItem.price}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, price: e.target.value }))}
+                  placeholder="Price"
+                  type="number"
+                  min="0"
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+                <input
+                  value={newItem.description}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Description"
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="mt-3">
+                <Button
+                  onClick={() => {
+                    const price = Number(newItem.price);
+                    if (!newItem.name || !newItem.category || !newItem.description || Number.isNaN(price)) return;
+                    addMenuItem({
+                      name: newItem.name.trim(),
+                      category: newItem.category.trim(),
+                      description: newItem.description.trim(),
+                      price,
+                    });
+                    setNewItem({ name: '', description: '', category: '', price: '' });
+                  }}
+                >
+                  Add Item
+                </Button>
+              </div>
+            </div>
             <div className="rounded-md border border-border bg-card">
               <table className="w-full text-sm">
                 <thead>
@@ -127,6 +187,7 @@ export default function ManagerDashboard() {
                     <th className="p-3 font-medium">Category</th>
                     <th className="p-3 font-medium">Price</th>
                     <th className="p-3 font-medium">Status</th>
+                    <th className="p-3 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -142,6 +203,15 @@ export default function ManagerDashboard() {
                         <span className={`text-xs font-medium ${item.available ? 'text-success' : 'text-destructive'}`}>
                           {item.available ? 'Available' : 'Unavailable'}
                         </span>
+                      </td>
+                      <td className="p-3">
+                        <Button
+                          size="sm"
+                          variant={item.available ? 'outline' : 'default'}
+                          onClick={() => updateMenuAvailability(item.id, !item.available)}
+                        >
+                          {item.available ? 'Exclude' : 'Include'}
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -196,7 +266,7 @@ export default function ManagerDashboard() {
           <div className="space-y-4">
             <h1 className="font-display text-2xl font-bold">Staff</h1>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {STAFF.map(member => (
+              {staff.map(member => (
                 <div key={member.id} className="rounded-md border border-border bg-card p-4 flex items-center gap-4">
                   <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center font-semibold text-sm text-muted-foreground">
                     {member.name.split(' ').map(n => n[0]).join('')}

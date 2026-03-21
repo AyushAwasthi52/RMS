@@ -1,73 +1,63 @@
-# Welcome to your Lovable project
+# Restaurant Management System
 
-## Project info
+Frontend + backend-integrated restaurant management app using React, Supabase Postgres, and custom database auth.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Stack
 
-## How can I edit this code?
+- React + Vite + TypeScript
+- Tailwind + shadcn/ui
+- Custom authentication with PostgreSQL (`pgcrypto` password hashing + session tokens)
+- PostgreSQL (through Supabase)
 
-There are several ways of editing your application.
+## Environment setup
 
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+1. Copy `.env.example` to `.env`
+2. Add your Supabase project values:
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY=...
+VITE_SUPABASE_ANON_KEY=...
+```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+## Database setup (Supabase SQL editor)
 
-# Step 3: Install the necessary dependencies.
-npm i
+Run in order:
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+1. `supabase/schema.sql`
+2. `supabase/seed.sql`
+
+This creates:
+- Auth tables `app_users`, `user_roles`, `user_sessions`
+- RPC auth functions `app_sign_up`, `app_sign_in`, `app_validate_session`, `app_sign_out`
+- Persistent `menu_items`, `tables`, `orders`, `order_items`, `inventory_items`
+- RLS policies and grants required by the app
+
+### Seeded test accounts
+
+After running `supabase/seed.sql`, you can sign in with:
+
+- `customer@rms.local` / `Password123!`
+- `waiter@rms.local` / `Password123!`
+- `chef@rms.local` / `Password123!`
+- `manager@rms.local` / `Password123!`
+- `multirole@rms.local` / `Password123!` (manager + chef)
+
+## Run locally
+
+```sh
+npm install
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Auth + RBAC flow
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+- Users sign in/sign up on `/auth`
+- Signup writes to `app_users` with encrypted password hash and `user_roles`
+- Login creates hashed session tokens in `user_sessions`
+- Entry dashboard (`/`) shows account details and only the roles assigned to the user
+- Route guards enforce role access:
+  - `/customer`
+  - `/waiter`
+  - `/chef`
+  - `/manager`
