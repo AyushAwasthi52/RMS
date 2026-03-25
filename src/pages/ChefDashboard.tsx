@@ -12,7 +12,7 @@ const lanes: { status: OrderStatus; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function ChefDashboard() {
-  const { orders, menuItems, updateOrderStatus, updateMenuAvailability, loading, error } = useRestaurant();
+  const { orders, menuItems, updateOrderStatusChef, updateMenuAvailability, loading, error } = useRestaurant();
 
   const nextStatus: Record<string, OrderStatus> = {
     pending: 'cooking',
@@ -75,7 +75,7 @@ export default function ChefDashboard() {
                         order={order}
                         actions={
                           nextStatus[order.status] ? (
-                            <Button size="sm" onClick={() => updateOrderStatus(order.id, nextStatus[order.status])} className="gap-1.5">
+                            <Button size="sm" onClick={() => updateOrderStatusChef(order.id, nextStatus[order.status])} className="gap-1.5">
                               {lane.status === 'pending' ? <Flame className="h-3.5 w-3.5" /> : <CheckCircle className="h-3.5 w-3.5" />}
                               {nextLabel[order.status]}
                             </Button>

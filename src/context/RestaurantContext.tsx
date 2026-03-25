@@ -12,6 +12,7 @@ import {
   updateMenuItemAvailability,
   updateInventoryQuantity,
   updateOrderStatusById,
+  chefAdvanceOrderStatus,
 } from '@/lib/restaurantApi';
 
 interface RestaurantContextType {
@@ -25,7 +26,8 @@ interface RestaurantContextType {
   updateMenuAvailability: (menuItemId: string, available: boolean) => void;
   addMenuItem: (item: { name: string; description: string; price: number; category: string }) => void;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
-  addOrder: (tableNumber: number, items: OrderItem[]) => void;
+  updateOrderStatusChef: (orderId: string, status: OrderStatus) => void;
+  addOrder: (tableNumber: number, items: OrderItem[]) => Promise<void>;
   getOrdersByStatus: (status: OrderStatus) => Order[];
   getOrderForTable: (tableNumber: number) => Order | undefined;
   updateInventory: (id: string, quantity: number) => void;
@@ -74,6 +76,25 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     }
   }, []);
 
+  // Periodic background refresh so order status updates show across different users/tabs.
+  const poll = useCallback(async () => {
+    try {
+      const [ordersResult, tablesResult, menuResult, inventoryResult] = await Promise.allSettled([
+        fetchOrders(),
+        fetchTables(),
+        fetchMenuItems(),
+        fetchInventory(),
+      ]);
+
+      if (ordersResult.status === 'fulfilled') setOrders(ordersResult.value);
+      if (tablesResult.status === 'fulfilled') setTables(tablesResult.value);
+      if (menuResult.status === 'fulfilled') setMenuItems(menuResult.value);
+      if (inventoryResult.status === 'fulfilled') setInventory(inventoryResult.value);
+    } catch {
+      // ignore background polling errors
+    }
+  }, []);
+
   useEffect(() => {
     if (!user) {
       setOrders([]);
@@ -85,6 +106,14 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     }
     refresh();
   }, [user, refresh]);
+
+  useEffect(() => {
+    if (!user) return;
+    const id = window.setInterval(() => {
+      poll();
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [user, poll]);
 
   const updateInventory = useCallback((id: string, quantity: number) => {
     setInventory((prev) =>
@@ -111,19 +140,12 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   }, [refresh]);
 
   const addMenuItem = useCallback((item: { name: string; description: string; price: number; category: string }) => {
-    const optimisticItem: MenuItem = {
-      id: `m${Date.now()}`,
-      name: item.name,
-      description: item.description,
-      price: item.price,
-      category: item.category,
-      available: true,
-    };
-    setMenuItems((prev) => [...prev, optimisticItem]);
-    createMenuItem(item).then(refresh).catch((err) => {
-      setError(err instanceof Error ? err.message : 'Failed to add menu item.');
-      refresh();
-    });
+    createMenuItem(item)
+      .then(refresh)
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Failed to add menu item.');
+        refresh();
+      });
   }, [refresh]);
 
   const updateOrderStatus = useCallback((orderId: string, status: OrderStatus) => {
@@ -145,27 +167,34 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       });
   }, [refresh]);
 
-  const addOrder = useCallback((tableNumber: number, items: OrderItem[]) => {
-    const total = items.reduce((sum, item) => sum + item.menuItem.price * item.quantity, 0);
-    const newOrder: Order = {
-      id: `o${Date.now()}`,
-      tableNumber,
-      items,
-      status: 'pending',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      total,
-    };
-    setOrders((prev) => [newOrder, ...prev]);
-    setTables((prev) =>
-      prev.map((t) => (t.number === tableNumber ? { ...t, status: 'occupied', currentOrderId: newOrder.id } : t)),
-    );
-    createOrder(tableNumber, items)
-      .then(refresh)
+  const updateOrderStatusChef = useCallback((orderId: string, status: OrderStatus) => {
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status, updatedAt: new Date() } : o)));
+    if (status === 'paid') {
+      setTables((prev) =>
+        prev.map((t) => (t.currentOrderId === orderId ? { ...t, status: 'available', currentOrderId: undefined } : t)),
+      );
+    }
+    chefAdvanceOrderStatus(orderId, status)
+      .then(async () => {
+        if (status === 'paid') {
+          await closeTableForOrder(orderId);
+        }
+      })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : 'Failed to create order.');
+        setError(err instanceof Error ? err.message : 'Failed to update order status.');
         refresh();
       });
+  }, [refresh]);
+
+  const addOrder = useCallback(async (tableNumber: number, items: OrderItem[]) => {
+    try {
+      await createOrder(tableNumber, items);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create order.');
+      await refresh();
+      throw err;
+    }
   }, [refresh]);
 
   const getOrdersByStatus = useCallback((status: OrderStatus) =>
@@ -186,6 +215,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       updateMenuAvailability,
       addMenuItem,
       updateOrderStatus,
+      updateOrderStatusChef,
       addOrder,
       getOrdersByStatus,
       getOrderForTable,
@@ -202,6 +232,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       updateMenuAvailability,
       addMenuItem,
       updateOrderStatus,
+      updateOrderStatusChef,
       addOrder,
       getOrdersByStatus,
       getOrderForTable,

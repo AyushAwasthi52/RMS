@@ -199,6 +199,15 @@ export async function updateOrderStatusById(orderId: string, status: OrderStatus
   if (error) throw error;
 }
 
+export async function chefAdvanceOrderStatus(orderId: string, nextStatus: OrderStatus): Promise<void> {
+  const { error } = await supabase.rpc('app_chef_advance_order', {
+    p_order_id: orderId,
+    p_next_status: nextStatus,
+  });
+
+  if (error) throw error;
+}
+
 export async function closeTableForOrder(orderId: string): Promise<void> {
   const { error } = await supabase
     .from('tables')

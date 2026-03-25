@@ -35,6 +35,57 @@ values
   ('Tomatoes', 8, 'kg', 5)
 on conflict do nothing;
 
+-- Map menu items to inventory ingredients for inventory consumption
+-- Quantities are expressed in the same unit as inventory_items.quantity (kg in this seed).
+insert into public.menu_item_ingredients (menu_item_id, inventory_item_id, quantity_per_menu_item)
+select
+  m.id,
+  i.id,
+  v.qty
+from public.menu_items m
+join public.inventory_items i on true
+join (
+  values
+    ('Butter Chicken', 'Chicken', 0.12),
+    ('Butter Chicken', 'Tomatoes', 0.06),
+    ('Butter Chicken', 'Butter', 0.03),
+
+    ('Paneer Tikka', 'Paneer', 0.10),
+    ('Paneer Tikka', 'Tomatoes', 0.03),
+    ('Paneer Tikka', 'Butter', 0.02),
+
+    ('Dal Makhani', 'Tomatoes', 0.05),
+    ('Dal Makhani', 'Butter', 0.02),
+
+    ('Garlic Naan', 'Butter', 0.01),
+    ('Garlic Naan', 'Tomatoes', 0.01),
+
+    ('Chicken Biryani', 'Chicken', 0.15),
+    ('Chicken Biryani', 'Basmati Rice', 0.20),
+    ('Chicken Biryani', 'Butter', 0.04),
+    ('Chicken Biryani', 'Tomatoes', 0.05),
+
+    ('Gulab Jamun', 'Butter', 0.01),
+    ('Gulab Jamun', 'Tomatoes', 0.01),
+
+    ('Masala Dosa', 'Paneer', 0.05),
+    ('Masala Dosa', 'Butter', 0.01),
+    ('Masala Dosa', 'Tomatoes', 0.02),
+
+    ('Tandoori Chicken', 'Chicken', 0.15),
+    ('Tandoori Chicken', 'Butter', 0.03),
+    ('Tandoori Chicken', 'Tomatoes', 0.04),
+
+    ('Mango Lassi', 'Butter', 0.01),
+    ('Mango Lassi', 'Tomatoes', 0.005),
+
+    ('Raita', 'Tomatoes', 0.03),
+    ('Raita', 'Butter', 0.01)
+) as v(item_name, inventory_name, qty)
+where m.name = v.item_name
+  and i.name = v.inventory_name
+on conflict (menu_item_id, inventory_item_id) do nothing;
+
 -- Seed auth users for quick local testing
 insert into public.app_users (email, full_name, password_hash, is_active)
 values

@@ -1,4 +1,20 @@
-create extension if not exists "pgcrypto";
+create extension if not exists "pgcrypto" with schema extensions;
+
+-- Re-runnable schema for dev/testing.
+-- Remove dependent objects first to avoid enum drop dependency errors.
+drop table if exists public.order_items cascade;
+drop table if exists public.orders cascade;
+drop table if exists public.tables cascade;
+drop table if exists public.menu_item_ingredients cascade;
+drop table if exists public.menu_items cascade;
+drop table if exists public.inventory_items cascade;
+drop table if exists public.user_sessions cascade;
+drop table if exists public.user_roles cascade;
+drop table if exists public.app_users cascade;
+
+drop type if exists public.order_status cascade;
+drop type if exists public.user_role cascade;
+drop type if exists public.table_status cascade;
 
 create type public.order_status as enum ('pending', 'cooking', 'ready', 'served', 'paid');
 create type public.user_role as enum ('customer', 'waiter', 'chef', 'manager');
@@ -57,6 +73,15 @@ create table if not exists public.order_items (
   notes text
 );
 
+create table if not exists public.menu_item_ingredients (
+  id uuid primary key default gen_random_uuid(),
+  menu_item_id uuid not null references public.menu_items(id) on delete cascade,
+  inventory_item_id uuid not null references public.inventory_items(id) on delete cascade,
+  quantity_per_menu_item numeric(10,2) not null check (quantity_per_menu_item > 0),
+  created_at timestamptz not null default now(),
+  unique (menu_item_id, inventory_item_id)
+);
+
 alter table public.tables
   drop constraint if exists tables_current_order_id_fkey,
   add constraint tables_current_order_id_fkey
@@ -107,7 +132,7 @@ begin
   values (
     lower(trim(p_email)),
     trim(p_full_name),
-    crypt(p_password, gen_salt('bf', 12))
+    extensions.crypt(p_password, extensions.gen_salt('bf', 12))
   )
   returning id into v_user_id;
 
@@ -141,16 +166,16 @@ begin
     and app_users.is_active = true
   limit 1;
 
-  if v_user.id is null or v_user.password_hash <> crypt(p_password, v_user.password_hash) then
+  if v_user.id is null or v_user.password_hash <> extensions.crypt(p_password, v_user.password_hash) then
     raise exception 'Invalid email or password.';
   end if;
 
-  v_token := encode(gen_random_bytes(32), 'hex');
+  v_token := encode(extensions.gen_random_bytes(32), 'hex');
 
   insert into public.user_sessions (user_id, token_hash, expires_at)
   values (
     v_user.id,
-    encode(digest(v_token, 'sha256'), 'hex'),
+    encode(extensions.digest(v_token, 'sha256'::text), 'hex'),
     now() + interval '7 days'
   );
 
@@ -189,7 +214,7 @@ as $$
   from public.user_sessions s
   join public.app_users u on u.id = s.user_id
   left join public.user_roles ur on ur.user_id = u.id
-  where s.token_hash = encode(digest(p_token, 'sha256'), 'hex')
+  where s.token_hash = encode(extensions.digest(p_token, 'sha256'::text), 'hex')
     and s.revoked_at is null
     and s.expires_at > now()
     and u.is_active = true
@@ -206,7 +231,7 @@ set search_path = public
 as $$
   update public.user_sessions
   set revoked_at = now()
-  where token_hash = encode(digest(p_token, 'sha256'), 'hex')
+  where token_hash = encode(extensions.digest(p_token, 'sha256'::text), 'hex')
     and revoked_at is null;
 $$;
 
@@ -222,6 +247,7 @@ alter table public.tables enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
 alter table public.inventory_items enable row level security;
+alter table public.menu_item_ingredients enable row level security;
 alter table public.user_sessions enable row level security;
 
 create policy "allow anon read users"
@@ -300,3 +326,79 @@ create policy "allow anon update inventory"
   to anon
   using (true)
   with check (true);
+
+create policy "allow anon read menu item ingredients"
+  on public.menu_item_ingredients
+  for select
+  to anon
+  using (true);
+
+-- Chef inventory consumption when advancing order status
+drop function if exists public.app_chef_advance_order(uuid, public.order_status);
+
+create or replace function public.app_chef_advance_order(
+  p_order_id uuid,
+  p_next_status public.order_status
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_current_status public.order_status;
+begin
+  select status into v_current_status from public.orders where id = p_order_id;
+  if v_current_status is null then
+    raise exception 'Order not found.';
+  end if;
+
+  -- Inventory is consumed when chef marks an order as ready.
+  -- (Chef transitions cooking -> ready in the UI.)
+  if v_current_status = 'cooking' and p_next_status = 'ready' then
+    if exists (
+      with required as (
+        select
+          mii.inventory_item_id,
+          sum(oi.quantity * mii.quantity_per_menu_item) as qty_to_deduct
+        from public.order_items oi
+        join public.menu_item_ingredients mii
+          on mii.menu_item_id = oi.menu_item_id
+        where oi.order_id = p_order_id
+        group by mii.inventory_item_id
+      )
+      select 1
+      from required r
+      join public.inventory_items i on i.id = r.inventory_item_id
+      where i.quantity < r.qty_to_deduct
+    ) then
+      raise exception 'Insufficient inventory to prepare this order.';
+    end if;
+
+    update public.inventory_items i
+    set quantity = i.quantity - r.qty_to_deduct
+    from (
+      with required as (
+        select
+          mii.inventory_item_id,
+          sum(oi.quantity * mii.quantity_per_menu_item) as qty_to_deduct
+        from public.order_items oi
+        join public.menu_item_ingredients mii
+          on mii.menu_item_id = oi.menu_item_id
+        where oi.order_id = p_order_id
+        group by mii.inventory_item_id
+      )
+      select inventory_item_id, qty_to_deduct
+      from required
+    ) r
+    where i.id = r.inventory_item_id;
+  end if;
+
+  update public.orders
+  set status = p_next_status,
+      updated_at = now()
+  where id = p_order_id;
+end;
+$$;
+
+grant execute on function public.app_chef_advance_order(uuid, public.order_status) to anon;
